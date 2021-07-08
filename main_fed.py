@@ -26,9 +26,9 @@ from models.Client import degree, sort_degree
 from bandit.main import Bandit
 
 CLIENTSELECTION = "RANDOM"
-NUMBERFILE = "4"
-CLIENTNUMBER = 10
-CLUSTERFILE = "rev_partition"
+NUMBERFILE = "5"
+CLIENTNUMBER = 6
+CLUSTERFILE = "rev_partition3"
 TESTROUND = 1
 
 if __name__ == '__main__':
@@ -119,7 +119,7 @@ if __name__ == '__main__':
         exit('Error: unrecognized dataset')
 
     if CLIENTSELECTION == "CLUSTER":
-        with open("./data/superuser/"+CLUSTERFILE+".json", "rb") as file:
+        with open("./data/yelp_leaf/"+CLUSTERFILE+".json", "rb") as file:
             rev_d = json.load(file)
 
     # build model
@@ -142,7 +142,7 @@ if __name__ == '__main__':
 
     # copy weights
     w_glob = net_glob.state_dict()
-
+    min_loss = 100000
     # training
     loss_train = []
     test_train = []
@@ -226,9 +226,14 @@ if __name__ == '__main__':
             write.add_scalar("Loss", loss_avg, iter)
             print()
             print('Round ' + str(iter + 1) + 'Test Word perplexity ' + str(acc_avg) + '; Test loss ' + str(loss_avg))
+            if acc_avg < min_loss:
+                min_loss = acc_avg
+                print("save model")
+                torch.save(net_glob.state_dict(), 'model/' + args.dataset + CLIENTSELECTION + NUMBERFILE  +
+                           str(CLIENTNUMBER)+'.pth')
     write.close()
-
-
+    torch.save(net_glob.state_dict(), 'model' + args.dataset + CLIENTSELECTION + NUMBERFILE + '/' +
+               str(CLIENTNUMBER) + 'end.pth')
     if CLIENTSELECTION == "RANDOM":
         with open("save/random" + NUMBERFILE + ".json", "w") as file:
             file.write(json.dumps(loss_train))
