@@ -33,11 +33,11 @@ class ContextualBandit:
         # generate random features
         if features is None:
             self.reset()
-            self.simulate=True
+            self.simulate = True
         else:
-            self.features=features
-            self.rewards=np.zeros((self.T, self.n_arms))
-            self.simulate=False
+            self.features = features
+            self.rewards = np.zeros((self.T, self.n_arms))
+            self.simulate = False
 
     @property
     def arms(self):
@@ -64,7 +64,7 @@ class ContextualBandit:
         """
         self.rewards = np.array(
             [
-                self.h(self.features[t, k]) + self.noise_std*np.random.randn()
+                self.h(self.features[t, k]) + self.noise_std * np.random.randn()
                 for t, k in itertools.product(range(self.T), range(self.n_arms))
             ]
         ).reshape(self.T, self.n_arms)
@@ -81,8 +81,8 @@ class ContextualBandit:
             torch.cuda.manual_seed(seed)
             torch.cuda.manual_seed_all(seed)
 
-    def set_reward(self,iteration,action,reward):
+    def set_reward(self, iteration, action, reward):
         # send action to fl and get the utility,time back
-        self.rewards[iteration,action]=reward
+        self.rewards[iteration, action] = reward
         self.best_rewards_oracle = np.max(self.rewards, axis=1)
         self.best_actions_oracle = np.argmax(self.rewards, axis=1)
