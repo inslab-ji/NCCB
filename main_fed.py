@@ -227,8 +227,12 @@ if __name__ == '__main__':
         # print loss
         if (iter + 1) % TESTROUND == 0:
             # net = copy.deepcopy(net_glob).to(args.device)
-            for it, idx in enumerate(test_id):
-                local = LocalUpdate_nlp(args=args, dataset=NLPDataset(test_users), idxs=idx, len=len)
+            for it, idx in enumerate(idxs_users):
+                if CLIENTSELECTION == "RANDOM" or CLIENTSELECTION == "BANDIT":
+                    id = all_idx[idx]
+                else:
+                    id = idx
+                local = LocalUpdate_nlp(args=args, dataset=NLPDataset(test_users), idxs=id, len=len)
                 ppl, _, loss = local.test(net_glob.to(args.device))
                 loss_locals.append(copy.deepcopy(loss))
                 acc_locals.append(copy.deepcopy(ppl))
