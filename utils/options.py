@@ -9,7 +9,11 @@ def args_parser():
     parser = argparse.ArgumentParser()
     # federated arguments
     parser.add_argument('--epochs', type=int, default=10, help="rounds of training")
-    parser.add_argument('--num_users', type=int, default=100, help="number of users: K")
+    parser.add_argument('--selection_method', type=str, default='RANDOM', help="method of select clients (RANDOM, CLUSTER, BANDIT)")
+    parser.add_argument('--save_filename', type=str, default='./', help="file index to save results")
+    parser.add_argument('--client_number', type=int, default=6, help="number of clients to select")
+    parser.add_argument('--cluster_filepath', type=str, default='./', help="cluster file to store clustering information")
+    parser.add_argument('--test_round', type=int, default=1, help="round number to test model")
     parser.add_argument('--frac', type=float, default=0.1, help="the fraction of clients: C")
     parser.add_argument('--local_ep', type=int, default=10, help="the number of local epochs: E")
     parser.add_argument('--local_bs', type=int, default=10, help="local batch size: B")

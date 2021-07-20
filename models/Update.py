@@ -62,7 +62,7 @@ class LocalUpdate_nlp(object):
         self.loss_func = nn.CrossEntropyLoss()
         self.selected_clients = []
         if batch_size is None:
-            batch_size=self.args.local_bs
+            batch_size = self.args.local_bs
         self.ldr_train = DataLoader(DatasetSplit(dataset, idxs, length=len), batch_size=batch_size,
                                     shuffle=True)
 
@@ -76,12 +76,12 @@ class LocalUpdate_nlp(object):
         for iter in range(self.args.local_ep):
             batch_loss = []
             batch_correct = []
-            perplex = []
+          #  perplex = []
             state_h, state_c = net.init_state()
             state_h, state_c = state_h.to(self.args.device), state_c.to(self.args.device)
 
             for batch, (x, y, mask) in enumerate(self.ldr_train):
-
+                acc = 0
                 x, y = x.to(self.args.device), y.to(self.args.device)
                 optimizer.zero_grad()
 
@@ -95,22 +95,28 @@ class LocalUpdate_nlp(object):
                 loss.backward()
                 nn.utils.clip_grad_norm_(net.parameters(), max_norm=5, norm_type=2)
                 optimizer.step()
+                for i, pred in enumerate(y_pred):
+                    last_word_logits = pred[-1]
+                    p = nn.functional.softmax(last_word_logits, dim=0).detach().cpu().numpy()
+                    indices = np.argsort(p)[-5:]
+                    acc += y.cpu()[i][-1].item() in indices
+                batch_correct.append(acc)
 
                 if self.args.verbose and batch % 10 == 0:
                     print('Update Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
                         iter, batch * len(x), len(self.ldr_train.dataset),
                               100.0 * batch / len(self.ldr_train), loss.item()))
                 batch_loss.append(loss.item())
-                perplex.append(np.exp(loss.item()).item())
+        #        perplex.append(np.exp(loss.item()).item())
             epoch_loss.append((sum(batch_loss) * len(batch_loss)) ** 0.5)
-            epoch_correct.append(sum(perplex) / len(perplex))
+            epoch_correct.append(sum(batch_correct) / len(batch_correct))
 
         return net.state_dict(), sum(epoch_loss) / len(epoch_loss), sum(epoch_correct) / len(epoch_correct)
 
     def test(self, model):
         model.eval()
         test_loss = 0
-        perplex = 0
+    #    perplex = 0
         state_h, state_c = model.init_state(10)
         state_h, state_c = state_h.to(self.args.device), state_c.to(self.args.device)
         acc = 0
@@ -125,8 +131,8 @@ class LocalUpdate_nlp(object):
             test_loss += self.loss_func(y_pred.transpose(1, 2), target).item()
             state_h = state_h.detach()
             state_c = state_c.detach()
-            perplex += np.exp(self.loss_func(y_pred.transpose(1, 2), target).item()).item()
+    #        perplex += np.exp(self.loss_func(y_pred.transpose(1, 2), target).item()).item()
 
         test_loss /= len(self.ldr_train.dataset)
 
-        return perplex / len(self.ldr_train.dataset), test_loss, acc/len(self.ldr_train.dataset)
+        return test_loss, acc / len(self.ldr_train.dataset)
