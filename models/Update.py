@@ -111,10 +111,15 @@ class LocalUpdate_nlp(object):
         perplex = 0
         state_h, state_c = model.init_state(10)
         state_h, state_c = state_h.to(self.args.device), state_c.to(self.args.device)
+        acc = 0
         for idx, (data, target, mask) in enumerate(self.ldr_train):
             data = data.to(self.args.device)
             target = data.to(self.args.device)
             y_pred, (state_h, state_c) = model(data, (state_h, state_c))
+            last_word_logits = y_pred[0][-1]
+            p = nn.functional.softmax(last_word_logits, dim=0).detach().numpy()
+            indices = np.argsort(p)[-5:]
+            acc += target in indices
             test_loss += self.loss_func(y_pred.transpose(1, 2), target).item()
             state_h = state_h.detach()
             state_c = state_c.detach()
@@ -122,4 +127,4 @@ class LocalUpdate_nlp(object):
 
         test_loss /= len(self.ldr_train.dataset)
 
-        return perplex / len(self.ldr_train.dataset), test_loss
+        return perplex / len(self.ldr_train.dataset), test_loss, acc/len(self.ldr_train.dataset)

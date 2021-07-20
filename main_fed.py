@@ -26,9 +26,9 @@ from models.Client import degree, sort_degree
 from bandit.main import Bandit
 
 CLIENTSELECTION = "RANDOM"
-NUMBERFILE = "5"
+NUMBERFILE = "7"
 CLIENTNUMBER = 6
-CLUSTERFILE = "rev_partition3"
+CLUSTERFILE = "rev_partition"
 TESTROUND = 1
 
 if __name__ == '__main__':
@@ -68,25 +68,38 @@ if __name__ == '__main__':
             jf = json.load(file)
             dataset_test["users"].extend(jf["users"])
             dataset_test["user_data"].update(jf["user_data"])
+        test_id = ["567231", "201818", "38001", "219655", "213663", "37440", "170233", "9556", "114058", "542839"]
+        dataset_test_new = dict()
+        all_idx = dataset_train['users']
+        for u in test_id:
+            dataset_test_new[u] = dataset_test["user_data"][u]
+            all_idx.remove(u)
         vocab_file = pickle.load(open("./data/vocab/superuser_vocab.pck", "rb"))
         vocab = collections.defaultdict(lambda: vocab_file['unk_symbol'])
         vocab.update(vocab_file['vocab'])
         dict_users = superuser_noniid(dataset_train['user_data'], vocab)
-        test_users = superuser_noniid(dataset_test['user_data'], vocab)
-        all_idx = dataset_train['users']
+        test_users = superuser_noniid(dataset_test_new, vocab)
         args.num_users = len(all_idx)
         if CLIENTSELECTION == "BANDIT":
-            f = np.load("./data/val.npy")
+            """f = np.load("./data/val.npy")
             new_f = np.zeros((CLIENTNUMBER * args.epochs, args.num_users, 16), dtype=np.float32)
             with open("./data/superuser/rev.json") as file:
                 rev = json.load(file)
             for i, u in enumerate(all_idx):
                 for j in range(CLIENTNUMBER * args.epochs):
                     new_f[j, i] = f[int(rev[u])]
+            f = new_f"""
+            new_f = np.zeros((CLIENTNUMBER * args.epochs, args.num_users, 32), dtype=np.float32)
+            with open("./data/supergfuser_hash_floc.pck", "rb") as file:
+                f = pickle.load(file)
+            for i, u in enumerate(all_idx):
+                for j in range(CLIENTNUMBER * args.epochs):
+                    new_f[j, i] = f[u]
             f = new_f
     elif args.dataset == 'yelp':
         data_files = [f for f in os.listdir("./data/yelp_leaf/train") if f.endswith('.json')]
         dataset_train = {"users": [], "user_data": {}}
+
         for f in data_files:
             with open("./data/yelp_leaf/train/" + f, "rb") as file:
                 jf = json.load(file)
@@ -119,7 +132,7 @@ if __name__ == '__main__':
         exit('Error: unrecognized dataset')
 
     if CLIENTSELECTION == "CLUSTER":
-        with open("./data/yelp_leaf/"+CLUSTERFILE+".json", "rb") as file:
+        with open("./data/superuser/" + CLUSTERFILE + ".json", "rb") as file:
             rev_d = json.load(file)
 
     # build model
@@ -153,7 +166,7 @@ if __name__ == '__main__':
     val_acc_list, net_list = [], []
     write = SummaryWriter('./path/to/log/' + args.dataset + CLIENTSELECTION + NUMBERFILE + '/' + str(CLIENTNUMBER))
     if CLIENTSELECTION == "BANDIT":
-        bandit = Bandit(CLIENTNUMBER * args.epochs, args.num_users, 16, f, False)
+        bandit = Bandit(CLIENTNUMBER * args.epochs, args.num_users, 32, f, False)
 
     if args.all_clients:
         print("Aggregation over all clients")
@@ -161,6 +174,7 @@ if __name__ == '__main__':
     if CLIENTSELECTION == "CLUSTER":
         cluster_ref = set(rev_d.keys())
     lr = 1e-3
+    chosen_clients_per_round = []
     for iter in range(args.epochs):
         loss_locals = []
         acc_locals = []
@@ -176,6 +190,8 @@ if __name__ == '__main__':
                 cluster_ref = set(rev_d.keys())
         elif CLIENTSELECTION == "BANDIT":
             idxs_users = [bandit.get_arm(iter * CLIENTNUMBER)]
+
+        chosen_clients_per_round.append(idxs_users)
         # idxs_users = sort_degree(rev_d, m)
         # ma = max(map(int, rev_d.keys()))
         # rev_d[str(min(map(int, rev_d.keys())) - 1)] = rev_d[str(ma)]
@@ -209,30 +225,26 @@ if __name__ == '__main__':
 
         # print loss
         if (iter + 1) % TESTROUND == 0:
-            net = copy.deepcopy(net_glob).to(args.device)
-            for it, idx in enumerate(idxs_users):
-                if CLIENTSELECTION == "RANDOM" or CLIENTSELECTION == "BANDIT":
-                    id = all_idx[idx]
-                else:
-                    id = idx
-                local = LocalUpdate_nlp(args=args, dataset=NLPDataset(test_users), idxs=id, len=len)
-                ppl, loss = local.test(copy.deepcopy(net_glob).to(args.device))
+            # net = copy.deepcopy(net_glob).to(args.device)
+            for it, idx in enumerate(test_id):
+                local = LocalUpdate_nlp(args=args, dataset=NLPDataset(test_users), idxs=idx, len=len)
+                ppl, _, loss = local.test(net_glob.to(args.device))
                 loss_locals.append(copy.deepcopy(loss))
                 acc_locals.append(copy.deepcopy(ppl))
             loss_avg = sum(loss_locals) / loss_locals.__len__()
             acc_avg = sum(acc_locals) / acc_locals.__len__()
             loss_train.append(acc_avg)
             write.add_scalar("Word PPL", acc_avg, iter)
-            write.add_scalar("Loss", loss_avg, iter)
+            write.add_scalar("Top 5 Acc", loss_avg, iter)
             print()
-            print('Round ' + str(iter + 1) + 'Test Word perplexity ' + str(acc_avg) + '; Test loss ' + str(loss_avg))
+            print('Round ' + str(iter + 1) + 'Test Word perplexity ' + str(acc_avg) + '; Test Top 5 Acc ' + str(loss_avg))
             if acc_avg < min_loss:
                 min_loss = acc_avg
                 print("save model")
-                torch.save(net_glob.state_dict(), 'model/' + args.dataset + CLIENTSELECTION + NUMBERFILE  +
-                           str(CLIENTNUMBER)+'.pth')
+                torch.save(net_glob.state_dict(), 'model/' + args.dataset + CLIENTSELECTION + NUMBERFILE +
+                           str(CLIENTNUMBER) + '.pth')
     write.close()
-    torch.save(net_glob.state_dict(), 'model' + args.dataset + CLIENTSELECTION + NUMBERFILE + '/' +
+    torch.save(net_glob.state_dict(), 'model/' + args.dataset + CLIENTSELECTION + NUMBERFILE +
                str(CLIENTNUMBER) + 'end.pth')
     if CLIENTSELECTION == "RANDOM":
         with open("save/random" + NUMBERFILE + ".json", "w") as file:
@@ -246,6 +258,5 @@ if __name__ == '__main__':
     with open("save/" + CLIENTSELECTION + NUMBERFILE + "test.json", "w") as file:
         file.write(json.dumps(test_train))
 
-
-
-
+    with open("save/" + CLIENTSELECTION + NUMBERFILE + "chosenclient.pck", "wb") as file:
+        pickle.dump(chosen_clients_per_round, file)
