@@ -85,8 +85,8 @@ def superuser_noniid(dataset, vocab):
         return to_ret
 
     for user, data in dataset.items():
-        data_x = data['x']*10
-        data_y = data['y']*10
+        data_x = data['x']
+        data_y = data['y']
         perm = np.random.permutation(len(data['x']))
         data_x_new = []
         data_y_new = []
