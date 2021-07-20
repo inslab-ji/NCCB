@@ -117,7 +117,7 @@ class LocalUpdate_nlp(object):
             target = data.to(self.args.device)
             y_pred, (state_h, state_c) = model(data, (state_h, state_c))
             last_word_logits = y_pred[0][-1]
-            p = nn.functional.softmax(last_word_logits, dim=0).detach().numpy()
+            p = nn.functional.softmax(last_word_logits, dim=0).detach().cpu().numpy()
             indices = np.argsort(p)[-5:]
             acc += target in indices
             test_loss += self.loss_func(y_pred.transpose(1, 2), target).item()

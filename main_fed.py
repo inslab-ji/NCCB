@@ -118,6 +118,7 @@ if __name__ == '__main__':
         dict_users = superuser_noniid(dataset_train['user_data'], vocab)
         test_users = superuser_noniid(dataset_test['user_data'], vocab)
         all_idx = dataset_train['users']
+        test_id = dataset_test['users']
         args.num_users = len(all_idx)
         if CLIENTSELECTION == "BANDIT":
             f = np.load("./data/val.npy")
