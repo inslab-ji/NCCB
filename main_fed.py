@@ -25,6 +25,36 @@ from models.test import test_img, test_nlp
 from models.Client import degree, sort_degree
 from bandit.main import Bandit
 
+
+import logging
+
+import os 
+os.environ["CUDA_VISIBLE_DEVICES"] = "3"
+
+
+
+logging.basicConfig(level=logging.INFO,#控制台打印的日志级别
+                    filename='new1.log',
+                    filemode='a',##模式，有w和a，w就是写模式，每次都会重新写日志，覆盖之前的日志
+                    #a是追加模式，默认如果不写的话，就是追加模式
+                    format=
+                    '%(asctime)s - %(pathname)s[line:%(lineno)d] - %(levelname)s: %(message)s'
+                    #日志格式
+                    )
+                
+
+superuser_train_path = "/home/sjtu/hangrui/federated-learning-master/data/superuser/superuser_trainnew.json"
+superuser_test_path = "/home/sjtu/hangrui/federated-learning-master/data/superuser/superuser_test.json"
+superuser_vocab_path = "/home/sjtu/hangrui/federated-learning-master/data/vocab/superuser_vocab.pck"
+
+yelp_train_path = "/home/sjtu/hangrui/federated-learning-master/data/yelp_leaf/train/"
+
+yelp_test_path = "/home/sjtu/hangrui/federated-learning-master/data/yelp_leaf/test/"
+yelp_vocab_path = "/home/sjtu/hangrui/federated-learning-master/data/vocab/yelp_vocab.pck"
+
+yelp_feature_path = "/home/sjtu/yelp_hash_floc_64.pck"
+
+FIXED_TEST = False
 if __name__ == '__main__':
     # parse args
     args = args_parser()
@@ -52,27 +82,37 @@ if __name__ == '__main__':
         else:
             exit('Error: only consider IID setting in CIFAR10')
     elif args.dataset == 'superuser':
+        logging.info("Use superuser dataset")
         dataset_train = {"users": [], "user_data": {}}
-        with open("./data/superuser/superuser_trainnew.json", "rb") as file:
+        with open(superuser_train_path, "rb") as file:
             jf = json.load(file)
             dataset_train["users"].extend(jf["users"])
             dataset_train["user_data"].update(jf["user_data"])
+            all_idx = dataset_train['users']
+
         dataset_test = {"users": [], "user_data": {}}
-        with open("./data/superuser/superuser_test.json", "rb") as file:
+        with open(superuser_test_path, "rb") as file:
             jf = json.load(file)
             dataset_test["users"].extend(jf["users"])
             dataset_test["user_data"].update(jf["user_data"])
-        test_id = ["567231", "201818", "38001", "219655", "213663", "37440", "170233", "9556", "114058", "542839"]
-        dataset_test_new = dict()
-        all_idx = dataset_train['users']
-        for u in test_id:
-            dataset_test_new[u] = dataset_test["user_data"][u]
-            all_idx.remove(u)
-        vocab_file = pickle.load(open("./data/vocab/superuser_vocab.pck", "rb"))
+
+        if FIXED_TEST:
+            test_id = ["567231", "201818", "38001", "219655", "213663", "37440", "170233", "9556", "114058", "542839"]
+            dataset_test_new = dict()
+            for u in test_id:
+                dataset_test_new[u] = dataset_test["user_data"][u]
+                all_idx.remove(u)
+        else:
+            
+            pass
+        vocab_file = pickle.load(open(superuser_vocab_path, "rb"))
         vocab = collections.defaultdict(lambda: vocab_file['unk_symbol'])
         vocab.update(vocab_file['vocab'])
         dict_users = superuser_noniid(dataset_train['user_data'], vocab)
-        test_users = superuser_noniid(dataset_test_new, vocab)
+        if FIXED_TEST:
+            test_users = superuser_noniid(dataset_test_new, vocab)
+        else:
+            test_users = superuser_noniid(dataset_test["user_data"], vocab)
         args.num_users = len(all_idx)
         if args.selection_method == "BANDIT":
             """f = np.load("./data/val.npy")
@@ -83,7 +123,7 @@ if __name__ == '__main__':
                 for j in range(CLIENTNUMBER * args.epochs):
                     new_f[j, i] = f[int(rev[u])]
             f = new_f"""
-            new_f = np.zeros((args.client_number * args.epochs, args.num_users, 32), dtype=np.float32)
+            new_f = np.zeros((args.client_number * args.epochs, args.num_users, args.fsize), dtype=np.float32)
             with open("./data/supergfuser_hash_floc.pck", "rb") as file:
                 f = pickle.load(file)
             for i, u in enumerate(all_idx):
@@ -91,22 +131,22 @@ if __name__ == '__main__':
                     new_f[j, i] = f[u]
             f = new_f
     elif args.dataset == 'yelp':
-        data_files = [f for f in os.listdir("./data/yelp_leaf/train") if f.endswith('.json')]
+        data_files = [f for f in os.listdir(yelp_train_path) if f.endswith('.json')]
         dataset_train = {"users": [], "user_data": {}}
 
         for f in data_files:
-            with open("./data/yelp_leaf/train/" + f, "rb") as file:
+            with open(yelp_train_path + f, "rb") as file:
                 jf = json.load(file)
                 dataset_train["users"].extend(jf["users"])
                 dataset_train["user_data"].update(jf["user_data"])
-        data_files = [f for f in os.listdir("./data/yelp_leaf/test") if f.endswith('.json')]
+        data_files = [f for f in os.listdir(yelp_test_path) if f.endswith('.json')]
         dataset_test = {"users": [], "user_data": {}}
         for f in data_files:
-            with open("./data/yelp_leaf/test/" + f, "rb") as file:
+            with open(yelp_test_path +f, "rb") as file:
                 jf = json.load(file)
                 dataset_test["users"].extend(jf["users"])
                 dataset_test["user_data"].update(jf["user_data"])
-        vocab_file = pickle.load(open("./data/vocab/yelp_vocab.pck", "rb"))
+        vocab_file = pickle.load(open(yelp_vocab_path, "rb"))
         vocab = collections.defaultdict(lambda: vocab_file['unk_symbol'])
         vocab.update(vocab_file['vocab'])
         dict_users = superuser_noniid(dataset_train['user_data'], vocab)
@@ -115,13 +155,21 @@ if __name__ == '__main__':
         test_id = dataset_test['users']
         args.num_users = len(all_idx)
         if args.selection_method == "BANDIT":
-            f = np.load("./data/val.npy")
-            new_f = np.zeros((args.client_number * args.epochs, args.num_users, 16), dtype=np.float32)
-            with open("./data/superuser/rev.json") as file:
-                rev = json.load(file)
+            # f = np.load("./data/val.npy")
+            # new_f = np.zeros((args.client_number * args.epochs, args.num_users, 16), dtype=np.float32)
+            # with open("./data/superuser/rev.json") as file:
+            #     rev = json.load(file)
+            # for i, u in enumerate(all_idx):
+            #     for j in range(args.client_number * args.epochs):
+            #         new_f[j, i] = f[int(rev[u])]
+            # f = new_f
+            print('load 64 floc')
+            new_f = np.zeros((args.client_number * args.epochs, args.num_users, args.fsize), dtype=np.float32)
+            with open(yelp_feature_path, "rb") as file:
+                f = pickle.load(file)
             for i, u in enumerate(all_idx):
-                for j in range(args.client_number * args.epochs):
-                    new_f[j, i] = f[int(rev[u])]
+                for j in range(args.client_number*args.epochs):
+                    new_f[j,i] = f[u]
             f = new_f
     else:
         exit('Error: unrecognized dataset')
@@ -161,7 +209,7 @@ if __name__ == '__main__':
     val_acc_list, net_list = [], []
     write = SummaryWriter('./tensorboard/' + args.dataset + args.selection_method + args.save_filename + '/' + str(args.client_number))
     if args.selection_method == "BANDIT":
-        bandit = Bandit(args.client_number * args.epochs, args.num_users, 32, f, False)
+        bandit = Bandit(args.client_number * args.epochs, args.num_users, args.fsize, f, True)
 
     if args.all_clients:
         print("Aggregation over all clients")
@@ -201,7 +249,7 @@ if __name__ == '__main__':
             else:
                 id = idx
             local = LocalUpdate_nlp(args=args, dataset=NLPDataset(dict_users), idxs=id, len=len)
-            w, loss, acc = local.train(net=copy.deepcopy(net_glob).to(args.device), lr=lr)
+            w, loss, acc = local.train(net=copy.deepcopy(net_glob).to(args.device), lr=lr, topk=args.topk)
             train_losses.append(loss)
             train_acc.append(acc)
             if args.selection_method == "BANDIT":
@@ -215,10 +263,12 @@ if __name__ == '__main__':
 
         # update global weights
         w_glob = FedAvg(w_locals)
-        print('The training loss in round ', (iter + 1), ' is ', np.average(train_losses), 'Acc is ', np.average(train_acc))
-        print()
+        logging.info('The training loss in round ', (iter + 1), ' is ', np.average(train_losses), 'Acc is ', np.average(train_acc))
+
         # copy weight to net_glob
         net_glob.load_state_dict(w_glob)
+        write.add_scalar("Train Acc", np.average(train_acc))
+        write.add_scalar("Train loss", np.average(train_losses))
 
         # print loss
         if (iter + 1) % args.test_round == 0:
@@ -229,24 +279,25 @@ if __name__ == '__main__':
                 else:
                     id = idx
                 local = LocalUpdate_nlp(args=args, dataset=NLPDataset(test_users), idxs=id, len=len, batch_size=1)
-                loss, acc = local.test(net_glob.to(args.device))
+                loss, acc = local.test(net_glob.to(args.device), args.topk)
+                
                 loss_locals.append(copy.deepcopy(loss))
                 acc_locals.append(copy.deepcopy(acc))
             loss_avg = sum(loss_locals) / loss_locals.__len__()
             acc_avg = sum(acc_locals) / acc_locals.__len__()
             loss_train.append(acc_avg)
-            write.add_scalar("Acc", acc_avg, iter)
-            write.add_scalar("Loss", loss_avg, iter)
+            write.add_scalar("Test Acc", acc_avg, iter)
+            write.add_scalar("Test Loss", loss_avg, iter)
             print()
-            print('Round ' + str(iter + 1) + 'Test Acc ' + str(acc_avg) + '; Test Loss' + str(loss_avg))
+            logging.info('Round ' + str(iter + 1) + 'Test Acc ' + str(acc_avg) + '; Test Loss' + str(loss_avg))
             if acc_avg > min_loss:
                 min_loss = acc_avg
                 print("save model")
                 torch.save(net_glob.state_dict(), 'weights/' + args.dataset + args.selection_method + args.save_filename +
                            str(args.client_number) + '.pth')
     write.close()
-    torch.save(net_glob.state_dict(), 'weights/' + args.dataset + args.selection_method + args.save_filename +
-               str(args.client_number) + 'end.pth')
+    torch.save(net_glob.state_dict(), 'weights/' + args.dataset + args.selection_method + args.save_filename + 'clientnumber'+
+               str(args.client_number) + 'fsize' + str(args.fsize)+'end.pth')
     if args.selection_method == "RANDOM":
         with open("save/random" + args.save_filename + ".json", "w") as file:
             file.write(json.dumps(loss_train))
@@ -254,10 +305,13 @@ if __name__ == '__main__':
         with open("save/partition" + args.save_filename + ".json", "w") as file:
             file.write(json.dumps(loss_train))
     elif args.selection_method == "BANDIT":
-        with open("save/bandit" + args.save_filename + ".json", "w") as file:
+        with open("save/bandit" + args.save_filename + 'clientnumber'+
+               str(args.client_number) +  'fsize' + str(args.fsize) + ".json", "w") as file:
             file.write(json.dumps(loss_train))
-    with open("save/" + args.selection_method + args.save_filename + "test.json", "w") as file:
+    with open("save/" + args.selection_method + args.save_filename + 'clientnumber'+
+               str(args.client_number) +  'fsize' + str(args.fsize) + "test.json", "w") as file:
         file.write(json.dumps(test_train))
 
-    with open("save/" + args.selection_method + args.save_filename + "chosen_client.pck", "wb") as file:
+    with open("save/" + args.selection_method + args.save_filename  + 'clientnumber'+
+               str(args.client_number) +  'fsize' + str(args.fsize) + "chosen_client.pck", "wb") as file:
         pickle.dump(chosen_clients_per_round, file)
