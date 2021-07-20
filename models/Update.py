@@ -57,11 +57,13 @@ class LocalUpdate(object):
 
 
 class LocalUpdate_nlp(object):
-    def __init__(self, args, dataset=None, idxs=None, len=10):
+    def __init__(self, args, dataset=None, idxs=None, len=10, batch_size=None):
         self.args = args
         self.loss_func = nn.CrossEntropyLoss()
         self.selected_clients = []
-        self.ldr_train = DataLoader(DatasetSplit(dataset, idxs, length=len), batch_size=self.args.local_bs,
+        if batch_size is None:
+            batch_size=self.args.local_bs
+        self.ldr_train = DataLoader(DatasetSplit(dataset, idxs, length=len), batch_size=batch_size,
                                     shuffle=True)
 
     def train(self, net, lr):

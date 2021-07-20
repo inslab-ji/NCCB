@@ -232,7 +232,7 @@ if __name__ == '__main__':
                     id = all_idx[idx]
                 else:
                     id = idx
-                local = LocalUpdate_nlp(args=args, dataset=NLPDataset(test_users), idxs=id, len=len)
+                local = LocalUpdate_nlp(args=args, dataset=NLPDataset(test_users), idxs=id, len=len, batch_size=1)
                 ppl, _, loss = local.test(net_glob.to(args.device))
                 loss_locals.append(copy.deepcopy(loss))
                 acc_locals.append(copy.deepcopy(ppl))
