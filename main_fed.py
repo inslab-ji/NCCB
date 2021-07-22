@@ -62,17 +62,17 @@ if __name__ == '__main__':
             jf = json.load(file)
             dataset_test["users"].extend(jf["users"])
             dataset_test["user_data"].update(jf["user_data"])
-        test_id = ["567231", "201818", "38001", "219655", "213663", "37440", "170233", "9556", "114058", "542839"]
-        dataset_test_new = dict()
+        test_id = dataset_test["users"]
+  #      dataset_test_new = dict()
         all_idx = dataset_train['users']
-        for u in test_id:
-            dataset_test_new[u] = dataset_test["user_data"][u]
-            all_idx.remove(u)
+   #     for u in test_id:
+    #        dataset_test_new[u] = dataset_test["user_data"][u]
+     #       all_idx.remove(u)
         vocab_file = pickle.load(open("./data/vocab/superuser_vocab.pck", "rb"))
         vocab = collections.defaultdict(lambda: vocab_file['unk_symbol'])
         vocab.update(vocab_file['vocab'])
         dict_users = superuser_noniid(dataset_train['user_data'], vocab)
-        test_users = superuser_noniid(dataset_test_new, vocab)
+        test_users = superuser_noniid(dataset_test['user_data'], vocab)
         args.num_users = len(all_idx)
         if args.selection_method == "BANDIT":
             """f = np.load("./data/val.npy")
@@ -84,7 +84,7 @@ if __name__ == '__main__':
                     new_f[j, i] = f[int(rev[u])]
             f = new_f"""
             new_f = np.zeros((args.client_number * args.epochs, args.num_users, 32), dtype=np.float32)
-            with open("./data/supergfuser_hash_floc.pck", "rb") as file:
+            with open("./data/superuser_hash_floc.pck", "rb") as file:
                 f = pickle.load(file)
             for i, u in enumerate(all_idx):
                 for j in range(args.client_number * args.epochs):
@@ -194,16 +194,16 @@ if __name__ == '__main__':
 
         lr = lr * 0.993
         train_losses = []
-        train_acc = []
+      #  train_acc = []
         for it, idx in enumerate(idxs_users):
             if args.selection_method == "RANDOM" or args.selection_method == "BANDIT":
                 id = all_idx[idx]
             else:
                 id = idx
             local = LocalUpdate_nlp(args=args, dataset=NLPDataset(dict_users), idxs=id, len=len)
-            w, loss, acc = local.train(net=copy.deepcopy(net_glob).to(args.device), lr=lr)
+            w, loss = local.train(net=copy.deepcopy(net_glob).to(args.device), lr=lr)
             train_losses.append(loss)
-            train_acc.append(acc)
+          #  train_acc.append(acc)
             if args.selection_method == "BANDIT":
                 bandit.set_reward(iter * args.client_number + it, loss)
             if args.all_clients:
@@ -215,7 +215,7 @@ if __name__ == '__main__':
 
         # update global weights
         w_glob = FedAvg(w_locals)
-        print('The training loss in round ', (iter + 1), ' is ', np.average(train_losses), 'Acc is ', np.average(train_acc))
+        print('The training loss in round ', (iter + 1), ' is ', np.average(train_losses))
         print()
         # copy weight to net_glob
         net_glob.load_state_dict(w_glob)

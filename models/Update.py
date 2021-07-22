@@ -63,7 +63,7 @@ class LocalUpdate_nlp(object):
         self.selected_clients = []
         if batch_size is None:
             batch_size = self.args.local_bs
-        self.ldr_train = DataLoader(DatasetSplit(dataset, idxs, length=len), batch_size=batch_size,
+        self.dlr = DataLoader(DatasetSplit(dataset, idxs, length=len), batch_size=batch_size,
                                     shuffle=True)
 
     def train(self, net, lr):
@@ -71,17 +71,17 @@ class LocalUpdate_nlp(object):
         # train and update
         optimizer = torch.optim.Adam(net.parameters(), lr=lr)
         epoch_loss = []
-        epoch_correct = []
+     #   epoch_correct = []
 
         for iter in range(self.args.local_ep):
             batch_loss = []
-            batch_correct = []
+      #      batch_correct = []
           #  perplex = []
             state_h, state_c = net.init_state()
             state_h, state_c = state_h.to(self.args.device), state_c.to(self.args.device)
 
-            for batch, (x, y, mask) in enumerate(self.ldr_train):
-                acc = 0
+            for batch, (x, y, mask) in enumerate(self.dlr):
+         #       acc = 0
                 x, y = x.to(self.args.device), y.to(self.args.device)
                 optimizer.zero_grad()
 
@@ -95,23 +95,21 @@ class LocalUpdate_nlp(object):
                 loss.backward()
                 nn.utils.clip_grad_norm_(net.parameters(), max_norm=5, norm_type=2)
                 optimizer.step()
-                for i, pred in enumerate(y_pred):
-                    last_word_logits = pred[-1]
-                    p = nn.functional.softmax(last_word_logits, dim=0).detach().cpu().numpy()
-                    indices = np.argsort(p)[-5:]
-                    acc += y.cpu()[i][-1].item() in indices
-                batch_correct.append(acc)
-
+                # for i, pred in enumerate(y_pred):
+                 #   last_word_logits = pred[-1]
+                 #   p = nn.functional.softmax(last_word_logits, dim=0).detach().cpu().numpy()
+                 #   indices = np.argsort(p)[-1:]
+                 #   acc += y.cpu()[i][-1].item() in indices
+                #batch_correct.append(acc)
                 if self.args.verbose and batch % 10 == 0:
                     print('Update Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
-                        iter, batch * len(x), len(self.ldr_train.dataset),
-                              100.0 * batch / len(self.ldr_train), loss.item()))
+                        iter, batch * len(x), len(self.dlr.dataset),
+                              100.0 * batch / len(self.dlr.dataset), loss.item()))
                 batch_loss.append(loss.item())
         #        perplex.append(np.exp(loss.item()).item())
             epoch_loss.append((sum(batch_loss) * len(batch_loss)) ** 0.5)
-            epoch_correct.append(sum(batch_correct) / len(batch_correct))
-
-        return net.state_dict(), sum(epoch_loss) / len(epoch_loss), sum(epoch_correct) / len(epoch_correct)
+         #   epoch_correct.append(sum(batch_correct))
+        return net.state_dict(), sum(epoch_loss) / len(epoch_loss)
 
     def test(self, model):
         model.eval()
@@ -120,19 +118,19 @@ class LocalUpdate_nlp(object):
         state_h, state_c = model.init_state(10)
         state_h, state_c = state_h.to(self.args.device), state_c.to(self.args.device)
         acc = 0
-        for idx, (data, target, mask) in enumerate(self.ldr_train):
+        for idx, (data, target, mask) in enumerate(self.dlr):
             data = data.to(self.args.device)
             target = target.to(self.args.device)
             y_pred, (state_h, state_c) = model(data, (state_h, state_c))
             last_word_logits = y_pred[0][-1]
             p = nn.functional.softmax(last_word_logits, dim=0).detach().cpu().numpy()
-            indices = np.argsort(p)[-5:]
-            acc += target.cpu()[0][-1].item() in indices
+            indices = np.argsort(p)[-1:]
+            acc += target.cpu()[0][-1].item() != 0 and target.cpu()[0][-1].item() in indices
             test_loss += self.loss_func(y_pred.transpose(1, 2), target).item()
             state_h = state_h.detach()
             state_c = state_c.detach()
     #        perplex += np.exp(self.loss_func(y_pred.transpose(1, 2), target).item()).item()
 
-        test_loss /= len(self.ldr_train.dataset)
+        test_loss /= len(self.dlr.dataset)
 
-        return test_loss, acc / len(self.ldr_train.dataset)
+        return test_loss, acc / len(self.dlr.dataset)
