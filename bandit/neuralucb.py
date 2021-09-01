@@ -38,7 +38,7 @@ class NeuralUCB(UCB):
 
         self.use_cuda = use_cuda
 
-        self.device = torch.device('cuda' if torch.cuda.is_available() and self.use_cuda else 'cpu')
+        self.device = torch.device('cuda:3' if torch.cuda.is_available() and self.use_cuda else 'cpu')
 
         # dropout rate
         self.p = p
@@ -95,8 +95,8 @@ class NeuralUCB(UCB):
             y.backward()
 
             self.grad_approx[a] = torch.cat(
-                [w.grad.detach().flatten() / np.sqrt(self.hidden_size) for w in self.model.parameters() if w.requires_grad]
-            ).to(self.device)
+                [w.grad.cpu().detach().flatten() / np.sqrt(self.hidden_size) for w in self.model.parameters() if w.requires_grad]
+            )
 
     def reset(self):
         """Reset the internal estimates.
@@ -133,4 +133,4 @@ class NeuralUCB(UCB):
         self.model.eval()
         self.mu_hat[self.iteration] = self.model.forward(
             torch.FloatTensor(self.bandit.features[self.iteration]).to(self.device)
-        ).detach().squeeze()
+        ).detach().squeeze().cpu()

@@ -59,3 +59,14 @@ model/
 # result
 path/
 
+tensorboard/
+
+config/
+
+weights/
+
+test1.py
+
+main_fed_test_fixed.py
+
+_config.yml

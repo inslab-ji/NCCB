@@ -9,12 +9,15 @@ import numpy as np
 
 
 class DatasetSplit(Dataset):
-    def __init__(self, dataset, idxs, length):
+    def __init__(self, dataset, idxs, test, length):
         self.dataset = dataset
         self.idxs = idxs
         self.length = length
-        #  self.l = min([self.dataset[i]['x'].__len__() for i in self.dataset.data.keys()])
-        self.l = self.dataset[idxs]['x'].__len__()
+        if not test:
+            self.l = min([self.dataset[i]['x'].__len__() for i in self.dataset.data.keys()])
+        else:
+            self.l = 20
+       # self.l = self.dataset[idxs]['x'].__len__()
 
     def __len__(self):
         return self.l
@@ -57,13 +60,13 @@ class LocalUpdate(object):
 
 
 class LocalUpdate_nlp(object):
-    def __init__(self, args, dataset=None, idxs=None, len=10, batch_size=None):
+    def __init__(self, args, test=False, dataset=None, idxs=None, len=10, batch_size=None):
         self.args = args
         self.loss_func = nn.CrossEntropyLoss()
         self.selected_clients = []
         if batch_size is None:
             batch_size = self.args.local_bs
-        self.dlr = DataLoader(DatasetSplit(dataset, idxs, length=len), batch_size=batch_size,
+        self.dlr = DataLoader(DatasetSplit(dataset, idxs, test=test, length=len), batch_size=batch_size,
                                     shuffle=True)
 
     def train(self, net, lr):
@@ -129,8 +132,8 @@ class LocalUpdate_nlp(object):
             test_loss += self.loss_func(y_pred.transpose(1, 2), target).item()
             state_h = state_h.detach()
             state_c = state_c.detach()
-    #        perplex += np.exp(self.loss_func(y_pred.transpose(1, 2), target).item()).item()
 
         test_loss /= len(self.dlr.dataset)
+        perplex = np.exp(test_loss)
 
-        return test_loss, acc / len(self.dlr.dataset)
+        return test_loss, acc / len(self.dlr.dataset), perplex

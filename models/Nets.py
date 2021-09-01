@@ -71,7 +71,7 @@ class NLPModel(nn.Module):
         super(NLPModel, self).__init__()
         self.lstm_size = 200
         self.embedding_dim = 200
-        self.num_layers = 2
+        self.num_layers = 5
 
         n_vocab = len(vocab)
         self.embedding = nn.Embedding(

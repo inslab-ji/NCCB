@@ -5,7 +5,6 @@
 import matplotlib
 
 matplotlib.use('Agg')
-import matplotlib.pyplot as plt
 import copy
 import numpy as np
 from torchvision import datasets, transforms
@@ -23,12 +22,12 @@ from models.Dataset import NLPDataset
 from models.Fed import FedAvg
 from models.test import test_img, test_nlp
 from models.Client import degree, sort_degree
-from bandit.main import Bandit
+from bandit.main import Bandit, CCMAB, OortBandit
 
 if __name__ == '__main__':
     # parse args
     args = args_parser()
-    print("CLIENT SELECTION Method:"+args.selection_method)
+    print("CLIENT SELECTION Method:" + args.selection_method)
     args.device = torch.device('cuda:{}'.format(args.gpu) if torch.cuda.is_available() and args.gpu != -1 else 'cpu')
     print("the device used for training is : ", args.device)
 
@@ -62,19 +61,23 @@ if __name__ == '__main__':
             jf = json.load(file)
             dataset_test["users"].extend(jf["users"])
             dataset_test["user_data"].update(jf["user_data"])
-        test_id = dataset_test["users"]
-  #      dataset_test_new = dict()
-        all_idx = dataset_train['users']
-   #     for u in test_id:
-    #        dataset_test_new[u] = dataset_test["user_data"][u]
-     #       all_idx.remove(u)
+        test_id = dataset_train["users"][-50:]
+        #      dataset_test_new = dict()
+        all_idx = dataset_train['users'][:-50]
+        #     for u in test_id:
+        #        dataset_test_new[u] = dataset_test["user_data"][u]
+        #       all_idx.remove(u)
         vocab_file = pickle.load(open("./data/vocab/superuser_vocab.pck", "rb"))
         vocab = collections.defaultdict(lambda: vocab_file['unk_symbol'])
         vocab.update(vocab_file['vocab'])
         dict_users = superuser_noniid(dataset_train['user_data'], vocab)
         test_users = superuser_noniid(dataset_test['user_data'], vocab)
+        test_users_new = {}
+        for u in test_id:
+            test_users_new[u] = test_users[u]
+        test_users = test_users_new
         args.num_users = len(all_idx)
-        if args.selection_method == "BANDIT":
+        if args.selection_method == "BANDIT" or args.selection_method == "neuralCCMAB":
             """f = np.load("./data/val.npy")
             new_f = np.zeros((CLIENTNUMBER * args.epochs, args.num_users, 16), dtype=np.float32)
             with open("./data/superuser/rev.json") as file:
@@ -90,6 +93,15 @@ if __name__ == '__main__':
                 for j in range(args.client_number * args.epochs):
                     new_f[j, i] = f[u]
             f = new_f
+        if args.selection_method == "neuralCCMAB":
+            with open("./data/yelp_leaf/yelp_hash_floc_64.pck", "rb") as file:
+                f = pickle.load(file)
+            new_f = np.zeros((args.client_number * args.epochs, args.num_users, 64), dtype=np.float32)
+            with open("./data/superuser/rev.json") as file:
+                rev = json.load(file)
+            for i, u in enumerate(all_idx):
+                for j in range(args.client_number * args.epochs):
+                    new_f[j, i] = f[u]
     elif args.dataset == 'yelp':
         data_files = [f for f in os.listdir("./data/yelp_leaf/train") if f.endswith('.json')]
         dataset_train = {"users": [], "user_data": {}}
@@ -111,23 +123,28 @@ if __name__ == '__main__':
         vocab.update(vocab_file['vocab'])
         dict_users = superuser_noniid(dataset_train['user_data'], vocab)
         test_users = superuser_noniid(dataset_test['user_data'], vocab)
-        all_idx = dataset_train['users']
-        test_id = dataset_test['users']
+        all_idx = dataset_train['users'][:-50]
+        test_id = dataset_train['users'][50:]
         args.num_users = len(all_idx)
-        if args.selection_method == "BANDIT":
-            f = np.load("./data/val.npy")
-            new_f = np.zeros((args.client_number * args.epochs, args.num_users, 16), dtype=np.float32)
+        if args.selection_method == "BANDIT" or args.selection_method == "neuralCCMAB":
+            f_size = 64
+            with open("./data/yelp_leaf/yelp_hash_floc_64.pck", "rb") as file:
+                f = pickle.load(file)
+            new_f = np.zeros((args.client_number * args.epochs, args.num_users, f_size), dtype=np.float32)
             with open("./data/superuser/rev.json") as file:
                 rev = json.load(file)
             for i, u in enumerate(all_idx):
                 for j in range(args.client_number * args.epochs):
-                    new_f[j, i] = f[int(rev[u])]
+                    new_f[j, i] = f[u][:f_size]
             f = new_f
+        if args.selection_method == "neuralCCMAB":
+            with open('./data/yelp_leaf/yelp_cluster_20.pck', 'rb') as file:
+                cluster = pickle.load(file)
     else:
         exit('Error: unrecognized dataset')
 
     if args.selection_method == "CLUSTER":
-        with open("./data/superuser/" +  args.cluster_filepath + ".json", "rb") as file:
+        with open("./data/superuser/" + args.cluster_filepath + ".json", "rb") as file:
             rev_d = json.load(file)
 
     # build model
@@ -159,10 +176,14 @@ if __name__ == '__main__':
     net_best = None
     best_loss = None
     val_acc_list, net_list = [], []
-    write = SummaryWriter('./tensorboard/' + args.dataset + args.selection_method + args.save_filename + '/' + str(args.client_number))
+    write = SummaryWriter(
+        './tensorboard/' + args.dataset + args.selection_method + args.save_filename + '/' + str(args.client_number))
     if args.selection_method == "BANDIT":
-        bandit = Bandit(args.client_number * args.epochs, args.num_users, 32, f, False)
-
+        bandit = Bandit(args.client_number * args.epochs, args.num_users, 64, f, True)
+    if args.selection_method == "neuralCCMAB":
+        bandit = CCMAB(args, cluster, args.client_number * args.epochs, args.num_users, f_size, f, True)
+    if args.selection_method == "OORT":
+        bandit = OortBandit(args)
     if args.all_clients:
         print("Aggregation over all clients")
         w_locals = [w_glob for i in range(args.num_users)]
@@ -185,8 +206,12 @@ if __name__ == '__main__':
                 cluster_ref = set(rev_d.keys())
         elif args.selection_method == "BANDIT":
             idxs_users = [bandit.get_arm(iter * args.client_number)]
+        elif args.selection_method == "neuralCCMAB":
+            idxs_users = bandit.getArms(args.client_number)
+        elif args.selection_method == "OORT":
+            idxs_users = bandit.requireArms(m)
 
-        chosen_clients_per_round.append(idxs_users)
+        # chosen_clients_per_round.append(idxs_users)
         # idxs_users = sort_degree(rev_d, m)
         # ma = max(map(int, rev_d.keys()))
         # rev_d[str(min(map(int, rev_d.keys())) - 1)] = rev_d[str(ma)]
@@ -194,18 +219,22 @@ if __name__ == '__main__':
 
         lr = lr * 0.993
         train_losses = []
-      #  train_acc = []
+        #  train_acc = []
         for it, idx in enumerate(idxs_users):
-            if args.selection_method == "RANDOM" or args.selection_method == "BANDIT":
+            if args.selection_method in ["RANDOM", "BANDIT", "neuralCCMAB", "OORT"]:
                 id = all_idx[idx]
             else:
                 id = idx
             local = LocalUpdate_nlp(args=args, dataset=NLPDataset(dict_users), idxs=id, len=len)
             w, loss = local.train(net=copy.deepcopy(net_glob).to(args.device), lr=lr)
             train_losses.append(loss)
-          #  train_acc.append(acc)
+            #  train_acc.append(acc)
             if args.selection_method == "BANDIT":
                 bandit.set_reward(iter * args.client_number + it, loss)
+            if args.selection_method == "neuralCCMAB":
+                bandit.updateReward(idx, loss)
+            if args.selection_method == "OORT":
+                bandit.updateWithRewards((idx, loss))
             if args.all_clients:
                 w_locals[idx] = copy.deepcopy(w)
             else:
@@ -219,45 +248,32 @@ if __name__ == '__main__':
         print()
         # copy weight to net_glob
         net_glob.load_state_dict(w_glob)
-
+        ppl_locals = []
         # print loss
         if (iter + 1) % args.test_round == 0:
             # net = copy.deepcopy(net_glob).to(args.device)
-            for it, idx in enumerate(idxs_users):
-                if args.selection_method == "RANDOM" or args.selection_method == "BANDIT":
-                    id = all_idx[idx]
-                else:
-                    id = idx
-                local = LocalUpdate_nlp(args=args, dataset=NLPDataset(test_users), idxs=id, len=len, batch_size=1)
-                loss, acc = local.test(net_glob.to(args.device))
+            for it, idx in enumerate(test_id):
+                local = LocalUpdate_nlp(args=args, test=True, dataset=NLPDataset(test_users), idxs=idx, len=len,
+                                        batch_size=1)
+                loss, acc, ppl = local.test(net_glob.to(args.device))
                 loss_locals.append(copy.deepcopy(loss))
                 acc_locals.append(copy.deepcopy(acc))
+                ppl_locals.append(copy.deepcopy(ppl))
             loss_avg = sum(loss_locals) / loss_locals.__len__()
             acc_avg = sum(acc_locals) / acc_locals.__len__()
+            ppl_avg = sum(ppl_locals) / ppl_locals.__len__()
             loss_train.append(acc_avg)
             write.add_scalar("Acc", acc_avg, iter)
             write.add_scalar("Loss", loss_avg, iter)
-            print()
+            write.add_scalar("PPL", ppl_avg, iter)
             print('Round ' + str(iter + 1) + 'Test Acc ' + str(acc_avg) + '; Test Loss' + str(loss_avg))
+            print()
             if acc_avg > min_loss:
                 min_loss = acc_avg
                 print("save model")
-                torch.save(net_glob.state_dict(), 'weights/' + args.dataset + args.selection_method + args.save_filename +
+                torch.save(net_glob.state_dict(),
+                           'weights/' + args.dataset + args.selection_method + args.save_filename +
                            str(args.client_number) + '.pth')
     write.close()
     torch.save(net_glob.state_dict(), 'weights/' + args.dataset + args.selection_method + args.save_filename +
                str(args.client_number) + 'end.pth')
-    if args.selection_method == "RANDOM":
-        with open("save/random" + args.save_filename + ".json", "w") as file:
-            file.write(json.dumps(loss_train))
-    elif args.selection_method == "CLUSTER":
-        with open("save/partition" + args.save_filename + ".json", "w") as file:
-            file.write(json.dumps(loss_train))
-    elif args.selection_method == "BANDIT":
-        with open("save/bandit" + args.save_filename + ".json", "w") as file:
-            file.write(json.dumps(loss_train))
-    with open("save/" + args.selection_method + args.save_filename + "test.json", "w") as file:
-        file.write(json.dumps(test_train))
-
-    with open("save/" + args.selection_method + args.save_filename + "chosen_client.pck", "wb") as file:
-        pickle.dump(chosen_clients_per_round, file)

@@ -7,6 +7,7 @@ from .utils import inv_sherman_morrison
 class UCB(abc.ABC):
     """Base class for UBC methods.
     """
+
     def __init__(self,
                  bandit,
                  reg_factor=1.0,
@@ -40,7 +41,7 @@ class UCB(abc.ABC):
             '% optimal arm': 0.0,
         }
         if per:
-            self.pbar=tqdm(total=self.bandit.T, postfix=self.postfix)
+            self.pbar = tqdm(total=self.bandit.T, postfix=self.postfix)
 
     def reset_upper_confidence_bounds(self):
         """Initialize upper confidence bounds and related quantities.
@@ -65,7 +66,7 @@ class UCB(abc.ABC):
         """
         self.A_inv = np.array(
             [
-                np.eye(self.approximator_dim)/self.reg_factor for _ in self.bandit.arms
+                np.eye(self.approximator_dim) / self.reg_factor for _ in self.bandit.arms
             ]
         )
 
@@ -74,10 +75,16 @@ class UCB(abc.ABC):
         """
         self.grad_approx = np.zeros((self.bandit.n_arms, self.approximator_dim))
 
-    def sample_action(self):
+    def sample_action(self, k):
         """Return the action to play based on current estimates
         """
-        return np.argmax(self.upper_confidence_bounds[self.iteration]).astype('int')
+        return np.argsort(self.upper_confidence_bounds[self.iteration])[-k:]
+
+    #       return np.argmax(self.upper_confidence_bounds[self.iteration]).astype('int')
+
+    # def sample_action_new(self, num):
+    #
+    #     return np.
 
     @abc.abstractmethod
     def reset(self):
@@ -129,7 +136,8 @@ class UCB(abc.ABC):
         # UCB exploration bonus
         self.exploration_bonus[self.iteration] = np.array(
             [
-                self.confidence_multiplier * np.sqrt(np.dot(self.grad_approx[a], np.dot(self.A_inv[a], self.grad_approx[a].T))) for a in self.bandit.arms
+                self.confidence_multiplier * np.sqrt(
+                    np.dot(self.grad_approx[a], np.dot(self.A_inv[a], self.grad_approx[a].T))) for a in self.bandit.arms
             ]
         )
 
@@ -137,7 +145,8 @@ class UCB(abc.ABC):
         self.predict()
 
         # estimated combined bound for reward
-        self.upper_confidence_bounds[self.iteration] = self.mu_hat[self.iteration] + self.exploration_bonus[self.iteration]
+        self.upper_confidence_bounds[self.iteration] = self.mu_hat[self.iteration] + self.exploration_bonus[
+            self.iteration]
 
     def update_A_inv(self):
         self.A_inv[self.action] = inv_sherman_morrison(
@@ -165,7 +174,7 @@ class UCB(abc.ABC):
                 # update exploration indicator A_inv
                 self.update_A_inv()
                 # compute regret
-                self.regrets[t] = self.bandit.best_rewards_oracle[t]-self.bandit.rewards[t, self.action]
+                self.regrets[t] = self.bandit.best_rewards_oracle[t] - self.bandit.rewards[t, self.action]
                 # increment counter
                 self.iteration += 1
 
@@ -180,23 +189,26 @@ class UCB(abc.ABC):
                     pbar.set_postfix(postfix)
                     pbar.update(self.throttle)
 
-    def per_run_1(self,t):
+    def per_run_1(self, k):
         # update confidence of all arms based on observed features at time t
         self.update_confidence_bounds()
         # pick action with the highest boosted estimated reward
-        self.action = self.sample_action()
-        self.actions[t] = self.action
+        self.action = self.sample_action(k)
+        # self.actions[t] = self.action
         return self.action
 
-    def per_run_2(self,t,reward):
-        self.bandit.set_reward(t, self.action, reward)
+    def per_run_2(self, t, reward, action=None):
+        if action is not None:
+            self.actions[t] = action
+            self.action = action
+        self.bandit.set_reward(t, self.actions[t], reward)
         # update approximator
         if t % self.train_every == 0:
             self.train()
         # update exploration indicator A_inv
         self.update_A_inv()
         # compute regret
-        self.regrets[t] = self.bandit.best_rewards_oracle[t] - self.bandit.rewards[t, self.action]
+        self.regrets[t] = self.bandit.best_rewards_oracle[t] - self.bandit.rewards[t, self.actions[t]]
         # increment counter
         self.iteration += 1
 
